@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React Virtual DOM Visualizer with Reconciliation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 50px;
+        }
+
+        .node {
+            margin: 5px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+
+        .node .children {
+            margin-left: 20px;
+        }
+
+        .updated {
+            background-color: #ffcccb;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="node" id="root">
+        </div>
+    </div>
+
+    <script>
+        function createElement(type, props, ...children) {
+            return {
+                type,
+                props: props || {},
+                children: children.flat(), // Flatten the children array to handle siblings
+            };
+        }
+
+        function render(vdom, container) {
+            container.innerHTML = '';
+            const {
+                type,
+                props,
+                children
+            } = vdom;
+            const element = document.createElement(type);
+            for (let prop in props) {
+                if (prop.startsWith('on')) {
+                    const eventName = prop.substring(2).toLowerCase();
+                    element.addEventListener(eventName, props[prop]);
+                } else {
+                    element[prop] = props[prop];
+                }
+            }
+            if (children) {
+                children.forEach(child => {
+                    if (typeof child === 'object') {
+                        render(child, element);
+                    } else {
+                        const textNode = document.createTextNode(child);
+                        element.appendChild(textNode);
+                    }
+                });
+            }
+            container.appendChild(element);
+        }
+
+        function reconcile(parentDom, instance, element) {
+            if (instance === null) {
+                const newInstance = instantiate(element);
+                parentDom.appendChild(newInstance.dom);
+                return newInstance;
+            } else if (element === null) {
+                parentDom.removeChild(instance.dom);
+                return null;
+            } else if (instance.element.key !== element.key) {
+                const newInstance = instantiate(element);
+                parentDom.replaceChild(newInstance.dom, instance.dom);
+                return newInstance;
+            } else if (typeof element.type === 'string') {
+                updateDomProperties(instance.dom, instance.element.props, element.props);
+                instance.childInstances = reconcileChildren(instance, element);
+                instance.element = element;
+                return instance;
+            }
+        }
+
+        function reconcileChildren(instance, element) {
+            const parentDom = instance.dom;
+            const {
+                children: oldChildren
+            } = instance;
+            const {
+                children: newChildren
+            } = element;
+            const newChildInstances = [];
+            const maxLength = Math.max(oldChildren.length, newChildren.length);
+            for (let i = 0; i < maxLength; i++) {
+                const newChild = newChildren[i];
+                const oldChildInstance = oldChildren[i];
+                const newChildInstance = reconcile(parentDom, oldChildInstance, newChild);
+                newChildInstances.push(newChildInstance);
+            }
+            return newChildInstances.filter(instance => instance !== null);
+        }
+
+        function updateDomProperties(dom, prevProps, nextProps) {
+            const prevKeys = Object.keys(prevProps);
+            const nextKeys = Object.keys(nextProps);
+            prevKeys
+                .filter(key => !(key in nextProps))
+                .forEach(key => {
+                    if (key.startsWith('on')) {
+                        const eventName = key.substring(2).toLowerCase();
+                        dom.removeEventListener(eventName, prevProps[key]);
+                    } else {
+                        dom[key] = '';
+                    }
+                });
+            nextKeys
+                .filter(key => prevProps[key] !== nextProps[key])
+                .forEach(key => {
+                    if (key.startsWith('on')) {
+                        const eventName = key.substring(2).toLowerCase();
+                        dom.addEventListener(eventName, nextProps[key]);
+                    } else {
+                        dom[key] = nextProps[key];
+                    }
+                });
+        }
+
+        function instantiate(element) {
+            const {
+                type,
+                props,
+                children
+            } = element;
+            const dom = document.createElement(type);
+            updateDomProperties(dom, {}, props);
+            const childInstances = (children || []).map(instantiate);
+            const childDoms = childInstances.map(child => child.dom);
+            childDoms.forEach(childDom => dom.appendChild(childDom));
+            return {
+                dom,
+                element,
+                childInstances
+            };
+        }
+
+        function update(instance, element) {
+            const parentDom = instance.dom.parentNode;
+            const newInstance = reconcile(parentDom, instance, element);
+            return newInstance;
+        }
+
+        // ----------------------------------------------------------------
+        //                      Rendering the UI logic
+        // ----------------------------------------------------------------
+        const root = document.getElementById('root');
+        let virtualDOM = createElement(
+            'div',
+            { id: 'app-container' },
+            createElement('p', null, 'This is a virtual DOM visualizer.')
+        );
+        // Initial rendering
+        render(virtualDOM, root);
+        // Simulate an update after a certain time
+        let flag = true;
+        setInterval(() => {
+            const updatedVirtualDOM =
+                createElement(
+                    'div',
+                    { id: 'app-container' },
+                    flag ? createElement('p', null, 'This is an updated virtual DOM visualizer.')
+                        : createElement('p', null, 'This is a virtual DOM visualizer.')
+                );
+
+            // Update the virtual DOM
+            virtualDOM = updatedVirtualDOM;
+
+            // Re-render with updated virtual DOM
+            render(updatedVirtualDOM, root);
+
+            // Toggle flag
+            flag = !flag;
+        }, 3000);
+    </script>
+</body>
+
+</html>
